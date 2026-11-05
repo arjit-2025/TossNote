@@ -49,3 +49,11 @@ The response body is the link, and the `X-Edit-Token` header holds the token for
 - `PUT /api/pastes/:id`: header `X-Edit-Token`, body `{content}`
 - `DELETE /api/pastes/:id`: header `X-Edit-Token`
 - `GET /api/pastes/:id/events`: SSE stream (`update`, `gone`)
+
+## Deploy on Render
+1. Sign in at https://render.com with GitHub.
+2. Click **New +**, then **Blueprint**, and pick this repository. Render reads `render.yaml`.
+3. Click **Apply**. Your site goes live at `https://tossnote-xxxx.onrender.com`.
+
+On the free plan, notes are wiped whenever the service restarts or redeploys, and the site sleeps after 15 minutes without visitors (the next visit takes about a minute to wake it).
+To keep notes, use a paid instance, add a persistent disk, and set `DATA_DIR` to the disk's mount path.

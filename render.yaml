@@ -1,0 +1,15 @@
+# One-click deploy on Render (https://render.com): New + > Blueprint > pick this repo.
+services:
+  - type: web
+    name: tossnote
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Free instances have 512 MB of RAM; keep single uploads well below that.
+      - key: MAX_BODY_MB
+        value: "25"
