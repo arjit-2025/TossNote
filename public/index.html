@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tossnote</title>
+  <meta name="description" content="Share text, code and files with an expiring link. Self-hosted, unlimited, no account.">
+  <meta name="theme-color" content="#14b8a6">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Tossnote</a>
+    <button class="ghost" id="mine-toggle" type="button">My notes <span id="mine-count" class="pill"></span></button>
+  </header>
+
+  <main class="wrap">
+    <section id="compose">
+      <h1>Toss it a link.</h1>
+      <p class="lede">Paste text, code or files, then share the link or QR code. The link expires when you choose. No account and no limits.</p>
+
+      <div class="card">
+        <input id="title" class="title-input" type="text" maxlength="200" placeholder="Title (optional)">
+        <div id="drop" class="drop">
+          <textarea id="content" spellcheck="false" placeholder="Paste or type here… (drop files anywhere)"></textarea>
+          <div class="drop-hint">Drop to attach</div>
+        </div>
+        <div id="files" class="files"></div>
+
+        <div class="opts">
+          <label>Language
+            <select id="syntax"></select>
+          </label>
+          <label>Expires
+            <select id="expiry">
+              <option value="10m">10 minutes</option>
+              <option value="1h">1 hour</option>
+              <option value="1d">1 day</option>
+              <option value="1w" selected>1 week</option>
+              <option value="30d">1 month</option>
+              <option value="1y">1 year</option>
+              <option value="never">Never</option>
+            </select>
+          </label>
+          <label class="file-btn">Attach files
+            <input id="file-input" type="file" multiple>
+          </label>
+        </div>
+
+        <details class="more">
+          <summary>Privacy &amp; options</summary>
+          <div class="grid">
+            <label class="check"><input type="checkbox" id="encrypt"> <span><b>End-to-end encrypt</b><small>Encrypted in your browser. The key stays in the link, so the server can never read it.</small></span></label>
+            <label class="check"><input type="checkbox" id="burn"> <span><b>Burn after reading</b><small>Deleted the moment someone opens it.</small></span></label>
+            <label>Password <input id="password" type="password" autocomplete="new-password" placeholder="None"></label>
+            <label>Max views <input id="maxviews" type="number" min="1" placeholder="Unlimited"></label>
+            <label>Custom link <input id="slug" type="text" maxlength="40" placeholder="random" pattern="[a-z0-9-]{3,40}"></label>
+          </div>
+        </details>
+
+        <div class="actions">
+          <span class="muted" id="stats">0 characters</span>
+          <button id="share" class="primary" type="button">Share <kbd>Ctrl ↵</kbd></button>
+        </div>
+        <p id="error" class="error" role="alert" hidden></p>
+      </div>
+    </section>
+
+    <section id="result" class="card result" hidden>
+      <div class="result-main">
+        <h2>Your link is ready</h2>
+        <div class="linkrow">
+          <input id="link" readonly>
+          <button id="copy" class="primary" type="button">Copy</button>
+        </div>
+        <p class="muted" id="result-meta"></p>
+        <div class="row">
+          <a id="open" class="btn" href="#">Open</a>
+          <button id="again" class="btn" type="button">New note</button>
+        </div>
+      </div>
+      <img id="qr" class="qr" alt="QR code for the link">
+    </section>
+
+    <section id="mine" class="card" hidden>
+      <h2>Notes created in this browser</h2>
+      <ul id="mine-list" class="list"></ul>
+    </section>
+
+    <section class="how">
+      <div><h3>Live edits</h3><p>Edit a note after you share it, and anyone viewing it sees the change right away.</p></div>
+      <div><h3>Private by choice</h3><p>Turn on passwords, burn after reading, view limits or real end-to-end encryption.</p></div>
+      <div><h3>Files too</h3><p>Attach images, PDFs, videos or anything else. The server sets the only size limit.</p></div>
+    </section>
+
+    <section class="card api">
+      <h2>From the terminal</h2>
+<pre><code>curl --data-binary @notes.txt "<span class="origin"></span>/api/raw?expiry=1d"
+echo "secret" | curl --data-binary @- "<span class="origin"></span>/api/raw?burn=1"
+curl "<span class="origin"></span>/r/NOTE_ID"</code></pre>
+      <p class="muted">Query options: <code>expiry</code> (10m, 2h, 3d, 1w, 1y, never), <code>burn=1</code>, <code>views=N</code>, <code>syntax</code>, <code>title</code>, <code>slug</code>. Send a password with the <code>X-Password</code> header. The response's <code>X-Edit-Token</code> header holds the edit token.</p>
+    </section>
+  </main>
+
+  <footer class="foot">Tossnote, self-hosted and open source.</footer>
+
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/assets/common.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

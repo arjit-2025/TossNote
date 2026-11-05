@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Tossnote</title>
+  <meta name="theme-color" content="#14b8a6">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/assets/style.css">
+  <link rel="stylesheet" href="/vendor/hl-light.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="/vendor/hl-dark.css" media="(prefers-color-scheme: dark)">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/"><span class="mark" aria-hidden="true"></span>Tossnote</a>
+    <a class="btn" href="/">New note</a>
+  </header>
+
+  <main class="wrap">
+    <section id="loading" class="card center"><p class="muted">Loading…</p></section>
+
+    <section id="gate" class="card center" hidden>
+      <h2 id="gate-title"></h2>
+      <p id="gate-text" class="muted"></p>
+      <form id="gate-form" class="gate-form">
+        <input id="gate-password" type="password" placeholder="Password" autocomplete="current-password" hidden>
+        <button class="primary" type="submit" id="gate-btn">Open</button>
+      </form>
+      <p id="gate-error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section id="missing" class="card center" hidden>
+      <h2>Nothing here</h2>
+      <p class="muted" id="missing-text">This note doesn't exist, has expired, or has already been read.</p>
+      <a class="btn primary" href="/">Create a note</a>
+    </section>
+
+    <article id="note" hidden>
+      <div class="note-head">
+        <div>
+          <h1 id="note-title"></h1>
+          <p class="muted" id="note-meta"></p>
+        </div>
+        <div class="row" id="toolbar">
+          <button class="btn" id="btn-copy" type="button">Copy text</button>
+          <button class="btn" id="btn-link" type="button">Copy link</button>
+          <button class="btn" id="btn-download" type="button">Download</button>
+          <a class="btn" id="btn-raw" target="_blank" rel="noopener" hidden>Raw</a>
+          <button class="btn" id="btn-qr" type="button">QR</button>
+          <button class="btn" id="btn-edit" type="button" hidden>Edit</button>
+          <button class="btn danger" id="btn-delete" type="button" hidden>Delete</button>
+        </div>
+      </div>
+      <p id="banner" class="banner" hidden></p>
+      <div id="qr-box" class="card center" hidden><img id="qr" class="qr" alt="QR code for this page"></div>
+      <div id="viewer" class="code card"><pre><code id="code"></code></pre></div>
+      <div id="editor" class="card" hidden>
+        <textarea id="edit-area" spellcheck="false"></textarea>
+        <div class="actions">
+          <span class="muted">People viewing this note see your saved changes right away.</span>
+          <div class="row"><button class="btn" id="edit-cancel" type="button">Cancel</button><button class="primary" id="edit-save" type="button">Save</button></div>
+        </div>
+      </div>
+      <div id="file-list" class="file-list"></div>
+    </article>
+  </main>
+
+  <script src="/vendor/highlight.js"></script>
+  <script src="/vendor/qrcode.js"></script>
+  <script src="/assets/common.js"></script>
+  <script src="/assets/view.js"></script>
+</body>
+</html>

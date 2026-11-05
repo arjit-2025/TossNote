@@ -1,0 +1,1 @@
+{ "name": "Tossnote", "short_name": "Tossnote", "start_url": "/", "display": "standalone", "background_color": "#101312", "theme_color": "#14b8a6", "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }] }

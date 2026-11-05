@@ -1,0 +1,17 @@
+{
+  "name": "tossnote",
+  "version": "1.0.0",
+  "description": "Self-hosted, unlimited text, code and file sharing with expiring links, burn-after-read, passwords, end-to-end encryption, QR codes and live editing.",
+  "main": "server.js",
+  "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@highlightjs/cdn-assets": "11.9.0",
+    "qrcode-generator": "1.4.4"
+  }
+}
