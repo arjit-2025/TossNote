@@ -133,7 +133,10 @@ function buildRecord(input) {
   for (const f of files) {
     if (!f || typeof f.data !== 'string') throw new HttpError(400, 'Each file needs base64 data');
   }
-  if (!content.trim() && files.length === 0) throw new HttpError(400, 'Nothing to share');
+  const livePad = Boolean(input.livePad);
+  if (livePad && input.burn) throw new HttpError(400, 'A live pad cannot also burn after reading');
+  // A live pad may start empty: devices fill it in after it is created.
+  if (!livePad && !content.trim() && files.length === 0) throw new HttpError(400, 'Nothing to share');
 
   const minutes = parseExpiry(input.expiry);
   if (!Number.isFinite(minutes) || minutes < 0) throw new HttpError(400, 'Invalid expiry');
@@ -155,6 +158,7 @@ function buildRecord(input) {
     updatedAt: now,
     expiresAt: minutes === 0 ? null : now + minutes * 60000,
     burn: Boolean(input.burn),
+    livePad,
     maxViews,
     views: 0,
     encrypted: Boolean(input.encrypted),
@@ -198,6 +202,7 @@ function publicMeta(r) {
     updatedAt: r.updatedAt,
     expiresAt: r.expiresAt,
     burn: r.burn,
+    livePad: Boolean(r.livePad),
     maxViews: r.maxViews,
     views: r.views,
     encrypted: r.encrypted,
@@ -234,13 +239,28 @@ async function openPaste(id, { password, viewToken }) {
   });
 }
 
+const hasEditToken = (r, req) => safeEqualHex(sha256(String(req.headers['x-edit-token'] || '')), r.editTokenHash);
+
+// Anyone who has opened a live pad (and passed its password, if it has one) may edit it.
+function hasPadAccess(r, req) {
+  if (!r.livePad) return false;
+  const t = String(req.headers['x-view-token'] || '');
+  const vt = t && viewTokens.get(t);
+  if (!vt || vt.id !== r.id || vt.exp <= Date.now()) return false;
+  vt.exp = Date.now() + VIEW_TTL;
+  return true;
+}
+
 async function requireEditor(id, req) {
   const r = await load(id);
   if (!r) throw new HttpError(404, 'Not found');
-  if (!safeEqualHex(sha256(String(req.headers['x-edit-token'] || '')), r.editTokenHash)) {
-    throw new HttpError(403, 'Invalid edit token');
-  }
+  if (!hasEditToken(r, req)) throw new HttpError(403, 'Invalid edit token');
   return r;
+}
+
+function presence(id) {
+  const set = subscribers.get(id);
+  notify(id, 'presence', { count: set ? set.size : 0 });
 }
 
 // ---------- HTTP plumbing ----------
@@ -327,27 +347,37 @@ async function handle(req, res) {
       res.write('retry: 3000\n\n');
       if (!subscribers.has(id)) subscribers.set(id, new Set());
       subscribers.get(id).add(res);
+      presence(id);
       const ping = setInterval(() => res.write(': ping\n\n'), 25000);
       req.on('close', () => {
         clearInterval(ping);
         const set = subscribers.get(id);
         if (set) { set.delete(res); if (!set.size) subscribers.delete(id); }
+        presence(id);
       });
       return;
     }
     if (!sub && m === 'PUT') {
       const body = await readJson(req);
       return send(res, 200, await withLock(id, async () => {
-        const r = await requireEditor(id, req);
+        const r = await load(id);
+        if (!r) throw new HttpError(404, 'Not found');
+        if (!hasEditToken(r, req) && !hasPadAccess(r, req)) {
+          throw new HttpError(403, r.livePad ? 'Your access to this pad expired. Reload the page.' : 'Invalid edit token');
+        }
         if (r.burn) throw new HttpError(409, 'Burn-after-reading notes cannot be edited');
         if (typeof body.content !== 'string') throw new HttpError(400, 'content must be a string');
+        if (!r.encrypted && body.content.includes('\0')) throw new HttpError(400, 'Text cannot contain NUL characters');
         r.content = body.content;
         if (!r.encrypted && body.title != null) r.title = String(body.title).slice(0, 200);
         if (body.syntax && SYNTAX_RE.test(body.syntax)) r.syntax = body.syntax;
         r.version += 1;
         r.updatedAt = Date.now();
         await save(r);
-        notify(id, 'update', { version: r.version });
+        const clientId = typeof body.clientId === 'string' ? body.clientId.slice(0, 64) : null;
+        // Password-protected content must not reach subscribers who never entered the password,
+        // so they only get the version and refetch through /open with their view token.
+        notify(id, 'update', { version: r.version, clientId, ...(r.passwordHash ? {} : { content: r.content }) });
         return { ok: true, version: r.version };
       }));
     }

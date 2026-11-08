@@ -68,10 +68,11 @@ test('live update event is pushed to subscribers', async () => {
   const ctrl = new AbortController();
   const res = await fetch(`${base}/api/pastes/${id}/events`, { signal: ctrl.signal });
   const reader = res.body.getReader();
-  await reader.read(); // retry preamble
+  let text = '';
+  while (!text.includes('event: presence')) text += new TextDecoder().decode((await reader.read()).value);
   await fetch(`${base}/api/pastes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Edit-Token': editToken }, body: JSON.stringify({ content: 'live v2' }) });
-  const { value } = await reader.read();
-  assert.match(new TextDecoder().decode(value), /event: update\ndata: \{"version":2\}/);
+  while (!text.includes('event: update')) text += new TextDecoder().decode((await reader.read()).value);
+  assert.match(text, /event: update\ndata: \{"version":2,"clientId":null,"content":"live v2"\}/);
   ctrl.abort();
 });
 
@@ -125,4 +126,63 @@ test('rejects empty notes and path traversal', async () => {
   assert.equal((await post('/api/pastes', { content: '   ' })).status, 400);
   assert.equal((await fetch(`${base}/assets/..%2f..%2fserver.js`)).status, 404);
   assert.equal((await fetch(`${base}/api/pastes/..%2fx`)).status, 404);
+});
+
+const put = (id, body, headers) => fetch(`${base}/api/pastes/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+
+test('live pad: may start empty, anyone who opened it can edit, others get content pushed', async () => {
+  const { id } = await create({ content: '', livePad: true });
+  const meta = await (await fetch(`${base}/api/pastes/${id}`)).json();
+  assert.equal(meta.livePad, true);
+  assert.equal((await put(id, { content: 'x' }, {})).status, 403, 'editing requires opening the pad first');
+  const devA = await (await open(id)).json();
+  const devB = await (await open(id)).json();
+
+  const ctrl = new AbortController();
+  const res = await fetch(`${base}/api/pastes/${id}/events`, { signal: ctrl.signal });
+  const reader = res.body.getReader();
+  let buf = '';
+  const nextEvent = async (name) => {
+    for (;;) {
+      const i = buf.indexOf(`event: ${name}\n`);
+      if (i !== -1) {
+        const end = buf.indexOf('\n\n', i);
+        if (end !== -1) { const ev = buf.slice(i, end); buf = buf.slice(end + 2); return JSON.parse(ev.split('data: ')[1]); }
+      }
+      const { value } = await reader.read();
+      buf += new TextDecoder().decode(value);
+    }
+  };
+  assert.equal((await nextEvent('presence')).count, 1);
+
+  assert.equal((await put(id, { content: 'from A', clientId: 'A' }, { 'X-View-Token': devA.viewToken })).status, 200);
+  assert.deepEqual(await nextEvent('update'), { version: 2, clientId: 'A', content: 'from A' });
+  assert.equal((await put(id, { content: 'from B', clientId: 'B' }, { 'X-View-Token': devB.viewToken })).status, 200);
+  assert.deepEqual(await nextEvent('update'), { version: 3, clientId: 'B', content: 'from B' });
+  ctrl.abort();
+  assert.equal((await (await open(id, { viewToken: devA.viewToken })).json()).content, 'from B');
+});
+
+test('live pad: view tokens of other notes and non-pad notes do not grant editing', async () => {
+  const pad = await create({ content: 'a', livePad: true });
+  const other = await create({ content: 'b' });
+  const otherView = await (await open(other.id)).json();
+  assert.equal((await put(pad.id, { content: 'hack' }, { 'X-View-Token': otherView.viewToken })).status, 403);
+  assert.equal((await put(other.id, { content: 'hack' }, { 'X-View-Token': otherView.viewToken })).status, 403, 'regular notes still need the edit token');
+  assert.equal((await post('/api/pastes', { content: 'x', livePad: true, burn: true })).status, 400);
+  assert.equal((await post('/api/pastes', { content: '' })).status, 400, 'regular notes still cannot be empty');
+});
+
+test('live pad with password: content is not broadcast, wrong token cannot edit', async () => {
+  const { id } = await create({ content: 'pw', livePad: true, password: 'pw1' });
+  assert.equal((await open(id)).status, 403);
+  const dev = await (await open(id, { password: 'pw1' })).json();
+  const ctrl = new AbortController();
+  const res = await fetch(`${base}/api/pastes/${id}/events`, { signal: ctrl.signal });
+  const reader = res.body.getReader();
+  await put(id, { content: 'secret edit', clientId: 'A' }, { 'X-View-Token': dev.viewToken });
+  let text = '';
+  while (!text.includes('event: update')) text += new TextDecoder().decode((await reader.read()).value);
+  assert.ok(!text.includes('secret edit'), 'password-protected content must not be pushed to anonymous subscribers');
+  ctrl.abort();
 });

@@ -54,7 +54,8 @@
     if (btn.disabled) return;
     showError('');
     const text = content.value;
-    if (!text.trim() && !attached.length) { showError('Add some text or a file first.'); return; }
+    const livePad = $('livepad').checked;
+    if (!livePad && !text.trim() && !attached.length) { showError('Add some text or a file first.'); return; }
     btn.disabled = true;
     btn.firstChild.textContent = 'Sharing… ';
     try {
@@ -63,7 +64,8 @@
       const body = {
         syntax: $('syntax').value,
         expiry: $('expiry').value,
-        burn: $('burn').checked,
+        burn: !livePad && $('burn').checked,
+        livePad,
         password: $('password').value || undefined,
         maxViews: $('maxviews').value || undefined,
         slug: $('slug').value.trim() || undefined,
@@ -89,10 +91,20 @@
       showError(e.message);
     } finally {
       btn.disabled = false;
-      btn.firstChild.textContent = 'Share ';
+      syncLiveToggle();
     }
   }
   $('share').addEventListener('click', share);
+
+  // Live pads can't burn after reading (the first device would destroy it for the others).
+  function syncLiveToggle() {
+    const live = $('livepad').checked;
+    $('burn').disabled = live;
+    if (live) $('burn').checked = false;
+    $('share').firstChild.textContent = live ? 'Start live pad ' : 'Share ';
+  }
+  $('livepad').addEventListener('change', syncLiveToggle);
+  syncLiveToggle();
 
   function showResult(url, res, body) {
     $('compose').hidden = true;
@@ -101,6 +113,7 @@
     $('open').href = url;
     $('qr').src = TN.qrDataUrl(url);
     const bits = [res.expiresAt ? `Expires ${TN.relTime(res.expiresAt)}` : 'Never expires'];
+    if (body.livePad) bits.unshift('Live pad: open it on your other devices (scan the QR code) and type on any of them');
     if (body.burn) bits.push('burns after one view');
     if (body.maxViews) bits.push(`max ${body.maxViews} views`);
     if (body.password) bits.push('password protected');

@@ -143,3 +143,17 @@ kbd { font-size: 11px; opacity: .75; border: 1px solid currentColor; border-radi
   .qr { width: 150px; height: 150px; margin: 0 auto; }
   .gate-form { flex-direction: column; }
 }
+
+/* ---- live pad ---- */
+.live-toggle { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 12px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; cursor: pointer; }
+.live-toggle small { display: block; color: var(--muted); font-size: 12.5px; }
+.live-toggle input { width: auto; margin-top: 4px; accent-color: var(--accent); }
+.pad { padding: 0; overflow: hidden; }
+.pad-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.pad-status { margin-left: auto; }
+.pad-status.error { color: var(--danger); }
+.live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--accent); animation: pulse 2s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+#pad-area { border: 0; border-radius: 0; min-height: 60vh; resize: vertical; font-size: 14px; line-height: 1.6; tab-size: 2; background: var(--code-bg); display: block; }
+#pad-area:focus { outline: none; }

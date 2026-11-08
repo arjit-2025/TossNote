@@ -11,6 +11,7 @@ No accounts, no plans, no rate limits, no ads.
 - Optional end-to-end encryption: AES-256-GCM in the browser. The key lives only in the `#k=` part of the URL, so the server never sees plaintext, titles or file names
 - File, image, video and audio attachments with inline previews (also encrypted when E2E is on)
 - Edit after sharing; open viewers update live (Server-Sent Events)
+- **Live pad**: open one link on several devices, and whatever anyone types or pastes appears on all of them within about half a second. Works with passwords and end-to-end encryption (the server relays ciphertext only)
 - QR code for every link, custom links (`/my-note`), and a "My notes" list kept in your browser
 - curl API for terminals and CI
 - Strict CSP; no third-party scripts, CDNs or analytics
@@ -48,7 +49,9 @@ The response body is the link, and the `X-Edit-Token` header holds the token for
 - `POST /api/pastes/:id/open`: `{password}` or `{viewToken}` returns the content (counts a view and applies burn/max-views)
 - `PUT /api/pastes/:id`: header `X-Edit-Token`, body `{content}`
 - `DELETE /api/pastes/:id`: header `X-Edit-Token`
-- `GET /api/pastes/:id/events`: SSE stream (`update`, `gone`)
+- `GET /api/pastes/:id/events`: SSE stream (`update`, `presence`, `gone`)
+
+Live pads (`livePad: true` on create) accept `PUT` from anyone who has opened them: send the `viewToken` from `/open` in an `X-View-Token` header, plus an optional `clientId` so a device can recognise its own echoes. Sync is last-writer-wins: devices never overwrite text they are still sending, but two people typing in the same instant can lose a few characters.
 
 ## Deploy on Render
 1. Sign in at https://render.com with GitHub.

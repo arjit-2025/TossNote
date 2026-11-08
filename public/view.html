@@ -55,6 +55,15 @@
       <p id="banner" class="banner" hidden></p>
       <div id="qr-box" class="card center" hidden><img id="qr" class="qr" alt="QR code for this page"></div>
       <div id="viewer" class="code card"><pre><code id="code"></code></pre></div>
+      <div id="pad" class="card pad" hidden>
+        <div class="pad-bar">
+          <span class="live-dot" aria-hidden="true"></span>
+          <b>Live pad</b>
+          <span class="muted" id="pad-devices">Connecting…</span>
+          <span class="muted pad-status" id="pad-status" role="status">All changes saved</span>
+        </div>
+        <textarea id="pad-area" spellcheck="false" placeholder="Type or paste here. It appears on every device that has this link open."></textarea>
+      </div>
       <div id="editor" class="card" hidden>
         <textarea id="edit-area" spellcheck="false"></textarea>
         <div class="actions">

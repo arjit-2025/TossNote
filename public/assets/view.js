@@ -13,6 +13,15 @@
   let cryptoKey = null;
   let editing = false;
   let objectUrls = [];
+  // Live pad state (declared up here because open() runs before the pad functions below).
+  const clientId = TN.b64uEncode(crypto.getRandomValues(new Uint8Array(9)));
+  let padReady = false;
+  let dirty = false;
+  let saving = false;
+  let queued = false;
+  let saveTimer = null;
+  let lastVersion = 0;
+  let statusTimer = null;
 
   const show = (section) => ['loading', 'gate', 'missing', 'note'].forEach((s) => { $(s).hidden = s !== section; });
   const missing = (msg) => { if (msg) $('missing-text').textContent = msg; show('missing'); };
@@ -52,25 +61,25 @@
   }
 
   async function open() {
+    note = await fetchNote();
+    if (note.consumed) TN.forgetNote(id);
+    render();
+    if (!note.consumed && !window._live) live();
+  }
+
+  // Opens the note (or refreshes it with the view token) and returns it decrypted, without rendering.
+  async function fetchNote() {
     const res = await TN.api(`/api/pastes/${encodeURIComponent(id)}/open`, { method: 'POST', body: viewToken ? { viewToken } : { password } });
     viewToken = res.viewToken || null;
-    let title = res.title;
-    let text = res.content;
     let files = res.files || [];
     if (res.encrypted) {
       let payload;
       try { payload = await TN.decryptJson(cryptoKey, res.content); }
       catch { throw Object.assign(new Error('Could not decrypt. The key in the link is wrong or incomplete.'), { status: 400 }); }
-      title = payload.title; text = payload.text;
       files = await Promise.all(files.map(async (f, i) => ({ ...(payload.files[i] || { name: `file-${i + 1}` }), bytes: await TN.decrypt(cryptoKey, TN.b64uDecode(f.data)) })));
-      note = { ...res, title, text, files, payloadFiles: payload.files };
-    } else {
-      files = files.map((f) => ({ ...f, bytes: TN.b64uDecode(f.data) }));
-      note = { ...res, title, text, files };
+      return { ...res, title: payload.title, text: payload.text, files, payloadFiles: payload.files };
     }
-    if (res.consumed) TN.forgetNote(id);
-    render();
-    if (!res.consumed && !window._live) live();
+    return { ...res, text: res.content, files: files.map((f) => ({ ...f, bytes: TN.b64uDecode(f.data) })) };
   }
 
   function render() {
@@ -78,6 +87,7 @@
     document.title = `${note.title || 'Untitled note'} · Tossnote`;
     $('note-title').textContent = note.title || 'Untitled note';
     const bits = [];
+    if (note.livePad) bits.push('anyone with the link can edit');
     if (note.encrypted) bits.push('🔒 end-to-end encrypted');
     bits.push(`created ${TN.relTime(note.createdAt)}`);
     if (note.version > 1) bits.push(`edited ${TN.relTime(note.updatedAt)}`);
@@ -89,16 +99,22 @@
     banner.hidden = !note.consumed;
     if (note.consumed) banner.textContent = 'This note has now been deleted from the server. Once you leave this page, it is gone for good.';
 
-    const hasText = note.text && note.text.length > 0;
-    $('viewer').hidden = !hasText || editing;
-    if (hasText) highlight(note.text, note.syntax);
+    const hasText = note.livePad || (note.text && note.text.length > 0);
+    if (note.livePad) {
+      $('viewer').hidden = true;
+      $('pad').hidden = false;
+      setupPad();
+    } else {
+      $('viewer').hidden = !hasText || editing;
+      if (hasText) highlight(note.text, note.syntax);
+    }
     $('btn-copy').hidden = !hasText;
     $('btn-download').hidden = !hasText;
     const raw = $('btn-raw');
     raw.hidden = note.encrypted || note.needPassword || note.consumed || note.maxViews != null;
     raw.href = `/r/${id}`;
     const canEdit = Boolean(mine && mine.editToken);
-    $('btn-edit').hidden = !canEdit || note.consumed || note.burn || editing;
+    $('btn-edit').hidden = !canEdit || note.consumed || note.burn || note.livePad || editing;
     $('btn-delete').hidden = !canEdit || note.consumed;
     renderFiles();
   }
@@ -128,10 +144,136 @@
     }));
   }
 
+  // ---- live pad: every device types into the same text ----
+  // Sync model: last writer wins. A device never overwrites text it is still sending,
+  // and its own echoes are recognised by clientId.
+  function setStatus(text, isError = false) {
+    const s = $('pad-status');
+    s.textContent = text;
+    s.classList.toggle('error', isError);
+  }
+
+  function setupPad() {
+    if (padReady) return;
+    padReady = true;
+    const area = $('pad-area');
+    area.value = note.text || '';
+    lastVersion = note.version;
+    area.addEventListener('input', () => {
+      dirty = true;
+      note.text = area.value;
+      setStatus('Saving…');
+      // Throttle (not debounce) so other devices see text while you are still typing.
+      if (!saveTimer) saveTimer = setTimeout(() => { saveTimer = null; savePad(); }, 300);
+    });
+    area.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        area.setRangeText('  ', area.selectionStart, area.selectionEnd, 'end');
+        area.dispatchEvent(new Event('input'));
+      }
+    });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) resync(); });
+    if (!note.text) area.focus();
+  }
+
+  async function putPad(text) {
+    const content = note.encrypted ? await TN.encryptJson(cryptoKey, { title: note.title, text, files: note.payloadFiles || [] }) : text;
+    const r = await TN.api(`/api/pastes/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'X-View-Token': viewToken || '' }, body: { content, clientId } });
+    lastVersion = Math.max(lastVersion, r.version);
+  }
+
+  // View tokens live in server memory; after a server restart, open the pad again to get a new one.
+  async function renewAccess() {
+    try {
+      const res = await TN.api(`/api/pastes/${encodeURIComponent(id)}/open`, { method: 'POST', body: { password } });
+      viewToken = res.viewToken || null;
+      return Boolean(viewToken);
+    } catch { return false; }
+  }
+
+  async function savePad() {
+    if (saving) { queued = true; return; }
+    saving = true;
+    queued = false;
+    dirty = false;
+    const text = $('pad-area').value;
+    let err = null;
+    try { await putPad(text); } catch (e) { err = e; }
+    if (err && err.status === 403 && await renewAccess()) {
+      try { await putPad(text); err = null; } catch (e) { err = e; }
+    }
+    saving = false;
+    if (err) {
+      dirty = true;
+      setStatus(err.status === 404 ? 'This pad has expired or was deleted' : `Not saved: ${err.message}`, true);
+      if (err.status !== 404 && !saveTimer) saveTimer = setTimeout(() => { saveTimer = null; savePad(); }, 3000);
+      return;
+    }
+    if (queued || dirty) savePad();
+    else setStatus('All changes saved');
+  }
+
+  function applyRemote(text, version) {
+    const area = $('pad-area');
+    const old = area.value;
+    lastVersion = version;
+    if (old === text) return;
+    // Keep the caret in place: positions after the first changed character shift by the length difference.
+    const focused = document.activeElement === area;
+    const { selectionStart: s, selectionEnd: e } = area;
+    let pre = 0;
+    while (pre < old.length && pre < text.length && old[pre] === text[pre]) pre++;
+    const delta = text.length - old.length;
+    area.value = text;
+    note.text = text;
+    if (focused) {
+      const fix = (p) => (p <= pre ? p : Math.max(pre, p + delta));
+      area.setSelectionRange(fix(s), fix(e));
+    }
+    setStatus('Updated from another device');
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => { if (!dirty && !saving) setStatus('All changes saved'); }, 2000);
+  }
+
+  async function onRemoteUpdate(data) {
+    if (data.version <= lastVersion) return;
+    if (data.clientId === clientId) { lastVersion = data.version; return; }
+    if (dirty || saving) return; // our pending save is newer and will win
+    let text;
+    if (data.content != null) {
+      text = note.encrypted ? (await TN.decryptJson(cryptoKey, data.content)).text : data.content;
+    } else {
+      text = (await fetchNote()).text; // password-protected pads don't broadcast content
+    }
+    if (dirty || saving) return;
+    applyRemote(text, data.version);
+  }
+
+  // Catch up after the connection dropped or the phone was asleep.
+  async function resync() {
+    if (!padReady || dirty || saving) return;
+    try {
+      const fresh = await fetchNote();
+      if (!dirty && !saving && fresh.version > lastVersion) applyRemote(fresh.text, fresh.version);
+    } catch { /* the next update or reconnect will retry */ }
+  }
+
+  function showPresence(count) {
+    $('pad-devices').textContent = count <= 1 ? 'Only this device is connected' : `${count} devices connected`;
+  }
+
   // ---- live updates ----
   function live() {
+    let connectedBefore = false;
     window._live = new EventSource(`/api/pastes/${encodeURIComponent(id)}/events`);
-    window._live.addEventListener('update', async () => {
+    window._live.addEventListener('open', () => {
+      if (connectedBefore && note.livePad) resync();
+      connectedBefore = true;
+    });
+    window._live.addEventListener('presence', (ev) => { if (note.livePad) showPresence(JSON.parse(ev.data).count); });
+    window._live.addEventListener('update', async (ev) => {
+      if (note.livePad) { try { await onRemoteUpdate(JSON.parse(ev.data)); } catch { /* ignore */ } return; }
       if (editing) return;
       try { await open(); } catch { /* ignore */ }
     });
